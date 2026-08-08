@@ -10,7 +10,9 @@ These resources need to be named unique to their scope to avoid CloudFormation e
 a resource with an existing name. The resource specific limitations are as follows:
 
 - iam role names: must be unique to their account
-- s3 bucket names: must be globally unique
+- s3 bucket names: must be globally unique, unless the bucket is created in S3's account-regional
+  namespace (see `useAccountRegionalNamespace`), in which case the name only has to be unique within
+  the account and region
 - ecr repository names: must be unique to their account/region
 
 The attributes we can use to name our resources are as follows:
@@ -28,3 +30,7 @@ make each resource name unique:
 | iam roles |         | ✔️      | ✔️      |          |
 | s3 bucket | ✔️       | ✔️      | ✔️     ️️ |          |
 | ecr repos |         |        | ✔️      | ✔️        |
+
+In the account-regional namespace the CDK only supplies the app id (as `cdk-<appId>-staging`);
+CloudFormation appends the account, region and an `-an` suffix itself, so the resulting name still
+carries all three identifiers.

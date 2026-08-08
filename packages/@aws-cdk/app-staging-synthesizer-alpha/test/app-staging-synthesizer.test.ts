@@ -1,11 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { App, Stack, CfnResource, FileAssetPackaging, Token, Lazy, Duration } from 'aws-cdk-lib';
-import { Match, Template } from 'aws-cdk-lib/assertions';
+import { Annotations, Match, Template } from 'aws-cdk-lib/assertions';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import type * as cxschema from 'aws-cdk-lib/cloud-assembly-schema';
-import type * as cxapi from 'aws-cdk-lib/cx-api';
+import * as cxapi from 'aws-cdk-lib/cx-api';
 import { evaluateCFN } from './evaluate-cfn';
 import { APP_ID, CFN_CONTEXT, getAssetManifest, isAssetManifest, last, readAssetManifest } from './util';
 import { AppStagingSynthesizer, DEPLOY_TIME_PREFIX } from '../lib';
@@ -655,6 +655,142 @@ describe(AppStagingSynthesizer, () => {
     });
     expect(assetManifestJSON.files?.fileHash).toMatchObject({
       displayName: 'Some file asset',
+    });
+  });
+
+  describe('account-regional staging bucket', () => {
+    /**
+     * Rebuild `app`/`stack` so the shared `evalCFN` and `getStagingResourceStack` helpers apply.
+     */
+    function setupApp(options: { useAccountRegionalNamespace?: boolean; flagEnabled?: boolean }) {
+      app = new App({
+        context: options.flagEnabled
+          ? { [cxapi.APP_STAGING_SYNTHESIZER_ACCOUNT_REGIONAL_BUCKET]: true }
+          : undefined,
+        defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
+          appId: APP_ID,
+          stagingBucketEncryption: BucketEncryption.S3_MANAGED,
+          useAccountRegionalNamespace: options.useAccountRegionalNamespace,
+        }),
+      });
+      stack = new Stack(app, 'Stack', {
+        env: { account: '000000000000', region: 'us-east-1' },
+      });
+      new CfnResource(stack, 'Resource', { type: 'Some::Resource' });
+    }
+
+    function synthWith(options: { useAccountRegionalNamespace?: boolean; flagEnabled?: boolean }) {
+      setupApp(options);
+      return app.synth();
+    }
+
+    function stagingStack() {
+      return app.node.findChild(`StagingStack-${APP_ID}-000000000000-us-east-1`) as Stack;
+    }
+
+    test('uses the global namespace by default', () => {
+      // WHEN
+      const asm = synthWith({});
+
+      // THEN
+      Template.fromJSON(getStagingResourceStack(asm).template).hasResourceProperties('AWS::S3::Bucket', {
+        BucketName: `cdk-${APP_ID}-staging-000000000000-us-east-1`,
+        BucketNamePrefix: Match.absent(),
+        BucketNamespace: Match.absent(),
+      });
+    });
+
+    test('uses the account-regional namespace when useAccountRegionalNamespace is true', () => {
+      // WHEN
+      const asm = synthWith({ useAccountRegionalNamespace: true });
+
+      // THEN - CloudFormation appends the `-<account>-<region>-an` suffix to the prefix
+      Template.fromJSON(getStagingResourceStack(asm).template).hasResourceProperties('AWS::S3::Bucket', {
+        BucketNamePrefix: `cdk-${APP_ID}-staging`,
+        BucketNamespace: 'account-regional',
+        BucketName: Match.absent(),
+      });
+    });
+
+    test('uses the account-regional namespace when the feature flag is enabled', () => {
+      // WHEN
+      const asm = synthWith({ flagEnabled: true });
+
+      // THEN
+      Template.fromJSON(getStagingResourceStack(asm).template).hasResourceProperties('AWS::S3::Bucket', {
+        BucketNamePrefix: `cdk-${APP_ID}-staging`,
+        BucketNamespace: 'account-regional',
+      });
+    });
+
+    test('useAccountRegionalNamespace false overrides the feature flag', () => {
+      // WHEN
+      const asm = synthWith({ flagEnabled: true, useAccountRegionalNamespace: false });
+
+      // THEN
+      Template.fromJSON(getStagingResourceStack(asm).template).hasResourceProperties('AWS::S3::Bucket', {
+        BucketName: `cdk-${APP_ID}-staging-000000000000-us-east-1`,
+        BucketNamespace: Match.absent(),
+      });
+    });
+
+    test('asset manifest points at the -an suffixed bucket name', () => {
+      // WHEN
+      const asm = synthWith({ useAccountRegionalNamespace: true });
+
+      // THEN - the CLI publishes assets before deployment, so the manifest must carry the
+      // literal name CloudFormation will produce, suffix included
+      const stackArtifact = asm.getStackArtifact('Stack');
+      const templateObjectKey = `${DEPLOY_TIME_PREFIX}${last(stackArtifact.stackTemplateAssetObjectUrl?.split('/'))}`;
+      expect(stackArtifact.stackTemplateAssetObjectUrl).toEqual(`s3://cdk-${APP_ID}-staging-000000000000-us-east-1-an/${templateObjectKey}`);
+
+      const manifestArtifact = asm.artifacts.filter(isAssetManifest)[0];
+      const manifest: cxschema.AssetManifest = JSON.parse(fs.readFileSync(manifestArtifact.file, { encoding: 'utf-8' }));
+      const files = manifest.files ?? {};
+      const destinations = files[Object.keys(files)[0]].destinations;
+
+      // The destination key is a content hash over the destination, which includes the bucket
+      // name, so assert its shape rather than pinning a hash that cannot be derived by hand.
+      expect(Object.keys(destinations)).toHaveLength(1);
+      expect(Object.keys(destinations)[0]).toMatch(/^000000000000-us-east-1-[0-9a-f]{8}$/);
+      expect(Object.values(destinations)).toEqual([{
+        bucketName: `cdk-${APP_ID}-staging-000000000000-us-east-1-an`,
+        objectKey: templateObjectKey,
+        region: 'us-east-1',
+        assumeRoleArn: `arn:\${AWS::Partition}:iam::000000000000:role/cdk-${APP_ID}-file-role-us-east-1`,
+      }]);
+    });
+
+    test('add file asset resolves to the -an suffixed bucket', () => {
+      // GIVEN
+      setupApp({ useAccountRegionalNamespace: true });
+
+      // WHEN
+      const location = stack.synthesizer.addFileAsset({
+        fileName: __filename,
+        packaging: FileAssetPackaging.FILE,
+        sourceHash: 'abcdef',
+      });
+
+      // THEN
+      expect(evalCFN(location.bucketName)).toEqual(`cdk-${APP_ID}-staging-000000000000-us-east-1-an`);
+      expect(evalCFN(location.httpUrl)).toEqual(`https://s3.us-east-1.domain.aws/cdk-${APP_ID}-staging-000000000000-us-east-1-an/abcdef.ts`);
+    });
+
+    test('warns about bucket replacement when the account-regional namespace is used', () => {
+      // WHEN
+      setupApp({ useAccountRegionalNamespace: true });
+
+      // THEN
+      Annotations.fromStack(stagingStack()).hasWarning('*', Match.stringLikeRegexp('account-regional namespace'));
+    });
+
+    test('does not warn when the global namespace is used', () => {
+      // WHEN
+      setupApp({});
+
+      // THEN - existing users see no new warnings
+      Annotations.fromStack(stagingStack()).hasNoWarning('*', Match.stringLikeRegexp('account-regional'));
     });
   });
 

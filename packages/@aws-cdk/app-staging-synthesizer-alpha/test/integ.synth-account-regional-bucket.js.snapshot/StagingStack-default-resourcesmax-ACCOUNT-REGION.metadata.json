@@ -1,0 +1,198 @@
+{
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION": [
+    {
+      "type": "aws:cdk:warning",
+      "data": "The staging bucket will be created in the S3 account-regional namespace and named 'cdk-default-resourcesmax-staging-<account>-<region>-an'. If this app was previously deployed with a globally-namespaced staging bucket, the bucket will be REPLACED: the old bucket and all assets in it are deleted (when autoDeleteStagingAssets is enabled, the default), and rollbacks to previously deployed versions of this app will fail until you redeploy. Set 'useAccountRegionalNamespace: false' to keep the current bucket. This warning will be removed when this module is stabilized. [ack: @aws-cdk/app-staging-synthesizer-alpha:accountRegionalStagingBucket]",
+      "trace": [
+        "Annotations.addMessage (/Users/dehli/home/projects/aws-cdk/packages/aws-cdk-lib/core/lib/annotations.js:244:29)",
+        "Annotations.addWarningV2 (/Users/dehli/home/projects/aws-cdk/packages/aws-cdk-lib/core/lib/annotations.js:113:18)",
+        "new DefaultStagingStack (/Users/dehli/home/projects/aws-cdk/packages/@aws-cdk/app-staging-synthesizer-alpha/lib/default-staging-stack.js:215:41)",
+        "Object.obtainStagingResources (/Users/dehli/home/projects/aws-cdk/packages/@aws-cdk/app-staging-synthesizer-alpha/lib/default-staging-stack.js:105:24)",
+        "PerEnvironmentStagingFactory.obtainStagingResources (/Users/dehli/home/projects/aws-cdk/packages/@aws-cdk/app-staging-synthesizer-alpha/lib/per-env-staging-factory.js:27:37)",
+        "AppStagingSynthesizer.reusableBind (/Users/dehli/home/projects/aws-cdk/packages/@aws-cdk/app-staging-synthesizer-alpha/lib/app-staging-synthesizer.js:138:50)",
+        "new Stack (/Users/dehli/home/projects/aws-cdk/packages/aws-cdk-lib/core/lib/stack.js:454:48)",
+        "Object.<anonymous> (/Users/dehli/home/projects/aws-cdk/packages/@aws-cdk/app-staging-synthesizer-alpha/test/integ.synth-account-regional-bucket.js:46:36)",
+        "Module._compile (node:internal/modules/cjs/loader:1871:14)",
+        "Module._extensions..js (node:internal/modules/cjs/loader:2002:10)",
+        "Module.load (node:internal/modules/cjs/loader:1594:32)",
+        "Module._load (node:internal/modules/cjs/loader:1396:12)",
+        "wrapModuleLoad (node:internal/modules/cjs/loader:255:19)",
+        "Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)",
+        "node:internal/main/run_main_module:33:47"
+      ]
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkFileRole": [
+    {
+      "type": "aws:cdk:analytics:construct",
+      "data": {
+        "roleName": "*",
+        "assumedBy": {
+          "principalAccount": "*",
+          "assumeRoleAction": "*"
+        }
+      }
+    },
+    {
+      "type": "aws:cdk:analytics:method",
+      "data": {
+        "addToPrincipalPolicy": [
+          {}
+        ]
+      }
+    },
+    {
+      "type": "aws:cdk:analytics:method",
+      "data": {
+        "attachInlinePolicy": [
+          "*"
+        ]
+      }
+    },
+    {
+      "type": "aws:cdk:analytics:method",
+      "data": {
+        "attachInlinePolicy": [
+          "*"
+        ]
+      }
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkStagingBucket": [
+    {
+      "type": "aws:cdk:analytics:construct",
+      "data": {
+        "bucketNamePrefix": "*",
+        "bucketNamespace": "account-regional",
+        "removalPolicy": "destroy",
+        "autoDeleteObjects": true,
+        "encryption": "S3_MANAGED",
+        "encryptionKey": "*",
+        "versioned": true,
+        "enforceSSL": true
+      }
+    },
+    {
+      "type": "aws:cdk:analytics:method",
+      "data": {
+        "addLifecycleRule": [
+          {}
+        ]
+      }
+    },
+    {
+      "type": "aws:cdk:analytics:method",
+      "data": {
+        "addLifecycleRule": [
+          {
+            "prefix": "*"
+          }
+        ]
+      }
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/Custom::S3AutoDeleteObjectsCustomResourceProvider": [
+    {
+      "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+      "data": true
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkFileRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CdkFileRoleE26CEABA"
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkFileRole/DefaultPolicy": [
+    {
+      "type": "aws:cdk:analytics:construct",
+      "data": "*"
+    },
+    {
+      "type": "aws:cdk:analytics:method",
+      "data": {
+        "attachToRole": [
+          "*"
+        ]
+      }
+    },
+    {
+      "type": "aws:cdk:analytics:method",
+      "data": {
+        "attachToRole": [
+          "*"
+        ]
+      }
+    },
+    {
+      "type": "aws:cdk:analytics:method",
+      "data": {
+        "addStatements": [
+          {}
+        ]
+      }
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkStagingBucket/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CdkStagingBucket1636058C"
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketAutoDeleteObjects"
+      }
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkStagingBucket/Policy": [
+    {
+      "type": "aws:cdk:analytics:construct",
+      "data": {
+        "bucket": "*"
+      }
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkStagingBucket/AutoDeleteObjectsCustomResource": [
+    {
+      "type": "aws:cdk:analytics:construct",
+      "data": "*"
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F"
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkFileRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CdkFileRoleDefaultPolicy621C7E5B"
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkStagingBucket/Policy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CdkStagingBucketPolicy42BD1F92"
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketPolicyStatements"
+      }
+    }
+  ],
+  "/StagingStack-default-resourcesmax-ACCOUNT-REGION/CdkStagingBucket/AutoDeleteObjectsCustomResource/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CdkStagingBucketAutoDeleteObjectsCustomResource800E998D"
+    }
+  ]
+}

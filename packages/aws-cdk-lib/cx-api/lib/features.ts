@@ -158,6 +158,7 @@ export const EKS_DEFAULT_AL2023 = '@aws-cdk/aws-eks:defaultToAL2023';
 export const ANNOTATIONS_IN_VALIDATION_REPORT = '@aws-cdk/core:annotationsInValidationReport';
 export const DEFAULT_CROSS_STACK_REFERENCES = '@aws-cdk/core:defaultCrossStackReferences';
 export const VALIDATE_AGAINST_DEFAULT_RULES = '@aws-cdk/core:validateAgainstDefaultRules';
+export const APP_STAGING_SYNTHESIZER_ACCOUNT_REGIONAL_BUCKET = '@aws-cdk/app-staging-synthesizer-alpha:accountRegionalStagingBucket';
 
 export const FLAGS: Record<string, FlagInfo> = {
   //////////////////////////////////////////////////////////////////////
@@ -1931,6 +1932,32 @@ export const FLAGS: Record<string, FlagInfo> = {
     introducedIn: { v2: '2.262.0' },
     recommendedValue: true,
     unconfiguredBehavesLike: { v2: false },
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [APP_STAGING_SYNTHESIZER_ACCOUNT_REGIONAL_BUCKET]: {
+    type: FlagType.ApiDefault,
+    summary: 'Create the app-staging-synthesizer staging bucket in the S3 account-regional namespace',
+    detailsMd: `
+      When enabled, \`DefaultStagingStack\` creates its staging bucket in S3's account-regional
+      namespace instead of the global namespace, unless \`useAccountRegionalNamespace\` says otherwise.
+
+      Global bucket names are first-come, first-served across all of AWS, so another account can
+      create a bucket with your app's well-known staging bucket name before you do ("bucket
+      squatting") and break your deployments. Account-regional bucket names are scoped to your
+      account and region and cannot be claimed by anyone else.
+
+      The bucket is named \`cdk-<appId>-staging-<account>-<region>-an\` instead of
+      \`cdk-<appId>-staging-<account>-<region>\`; CloudFormation appends the
+      \`-<account>-<region>-an\` suffix to the prefix the CDK supplies.
+
+      When disabled, the staging bucket keeps its globally-unique name.`,
+    introducedIn: { v2: 'V2NEXT' },
+    recommendedValue: true,
+    unconfiguredBehavesLike: { v2: false },
+    compatibilityWithOldBehaviorMd: `Explicitly set \`useAccountRegionalNamespace: false\` in your \`AppStagingSynthesizer.defaultResources()\` (or \`DefaultStagingStack.factory()\`) options.
+
+**Warning**: Enabling this flag on an existing app renames the staging bucket, which causes CloudFormation to replace it. With \`autoDeleteStagingAssets\` enabled (the default), the old bucket and every asset in it is deleted, so rollbacks to previously deployed versions of your app will fail until you redeploy. Apps that set \`stagingBucketName\` will fail synthesis, because an explicit name cannot be combined with the account-regional namespace. To migrate safely, first pin existing apps to \`useAccountRegionalNamespace: false\` explicitly, then enable the flag.`,
   },
 };
 

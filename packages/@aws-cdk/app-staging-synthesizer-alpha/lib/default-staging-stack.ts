@@ -11,21 +11,27 @@ import type {
   StackProps,
 } from 'aws-cdk-lib/core';
 import {
+  Annotations,
   App,
   ArnFormat,
   BootstraplessSynthesizer,
   Duration,
+  FeatureFlags,
   RemovalPolicy,
   Stack,
+  Token,
+  ValidationError,
   INLINE_CUSTOM_RESOURCE_CONTEXT,
 } from 'aws-cdk-lib/core';
-import { StringSpecializer } from 'aws-cdk-lib/core/lib/helpers-internal';
+import { lit, StringSpecializer } from 'aws-cdk-lib/core/lib/helpers-internal';
 import * as cxapi from 'aws-cdk-lib/cx-api';
 import { Construct } from 'constructs';
 import type { BootstrapRole } from './bootstrap-roles';
 import type { FileStagingLocation, IStagingResources, IStagingResourcesFactory, ImageStagingLocation } from './staging-stack';
 
 export const DEPLOY_TIME_PREFIX = 'deploy-time/';
+
+const MAX_BUCKET_NAME_LENGTH = 63;
 
 /**
  * This is a dummy construct meant to signify that a stack is utilizing
@@ -59,6 +65,9 @@ export interface DefaultStagingStackOptions {
   /**
    * Explicit name for the staging bucket
    *
+   * Cannot be combined with `useAccountRegionalNamespace`, which derives the bucket
+   * name from `appId`.
+   *
    * @default - a well-known name unique to this app/env.
    */
   readonly stagingBucketName?: string;
@@ -78,6 +87,29 @@ export interface DefaultStagingStackOptions {
    * BucketEncryption.S3_MANAGED to avoid the cost of a KMS key.
    */
   readonly stagingBucketEncryption: s3.BucketEncryption;
+
+  /**
+   * Create the staging bucket in S3's account-regional namespace.
+   *
+   * Global bucket names are first-come, first-served across all of AWS, so another account
+   * can create a bucket with your app's well-known staging bucket name before you do
+   * ("bucket squatting"). Account-regional bucket names are scoped to your account and
+   * region and cannot be claimed by anyone else.
+   *
+   * CloudFormation appends a `-<account>-<region>-an` suffix, making the bucket name
+   * `cdk-<appId>-staging-<account>-<region>-an` instead of
+   * `cdk-<appId>-staging-<account>-<region>`.
+   *
+   * Cannot be combined with `stagingBucketName`.
+   *
+   * Changing this for an app that has already been deployed renames the staging bucket,
+   * which replaces it. See the README for the migration path.
+   *
+   * @see https://docs.aws.amazon.com/AmazonS3/latest/userguide/gpbucketnamespaces.html
+   * @default - `true` if the `@aws-cdk/app-staging-synthesizer-alpha:accountRegionalStagingBucket`
+   * feature flag is enabled, `false` otherwise
+   */
+  readonly useAccountRegionalNamespace?: boolean;
 
   /**
    * Pass in an existing role to be used as the file publishing role.
@@ -239,6 +271,7 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
   private readonly appId: string;
   private readonly stagingBucketName?: string;
   private stagingBucketEncryption: s3.BucketEncryption;
+  private readonly useAccountRegionalNamespace: boolean;
 
   /**
    * File publish role ARN in asset manifest format
@@ -286,6 +319,46 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
     // FIXME: when stabilizing this module, we should make `stagingBucketEncryption` optional, defaulting to S3_MANAGED.
     // See https://github.com/aws/aws-cdk/pull/28978#issuecomment-1930007176 for details on this decision.
     this.stagingBucketEncryption = props.stagingBucketEncryption;
+
+    // The prop wins; the feature flag only moves the default.
+    this.useAccountRegionalNamespace = props.useAccountRegionalNamespace
+      ?? FeatureFlags.of(this).isEnabled(cxapi.APP_STAGING_SYNTHESIZER_ACCOUNT_REGIONAL_BUCKET)
+      ?? false;
+
+    if (props.stagingBucketName !== undefined && this.useAccountRegionalNamespace) {
+      throw new ValidationError(
+        lit`StagingBucketNameConflictsWithNamespace`,
+        `'stagingBucketName' (value: ${JSON.stringify(props.stagingBucketName)}) cannot be combined with `
+        + '\'useAccountRegionalNamespace\'; in the account-regional namespace the bucket name is derived from '
+        + '\'appId\'. Remove \'stagingBucketName\', or set \'useAccountRegionalNamespace\' to false',
+        this);
+    }
+
+    if (this.useAccountRegionalNamespace && !Token.isUnresolved(this.region)) {
+      // CloudFormation appends `-<accountId(12)>-<region>-an` to the prefix, i.e. 17 + region.length
+      // characters. The result must fit S3's 63-character bucket name limit.
+      const nameLength = this.stagingBucketNamePrefix.length + 17 + this.region.length;
+      if (nameLength > MAX_BUCKET_NAME_LENGTH) {
+        throw new ValidationError(
+          lit`StagingBucketNameTooLong`,
+          `the account-regional staging bucket name for appId ${JSON.stringify(this.appId)} in region `
+          + `${JSON.stringify(this.region)} would be ${nameLength} characters, but S3 bucket names may be at `
+          + `most ${MAX_BUCKET_NAME_LENGTH}; shorten 'appId' by ${nameLength - MAX_BUCKET_NAME_LENGTH} character(s)`,
+          this);
+      }
+    }
+
+    if (this.useAccountRegionalNamespace) {
+      Annotations.of(this).addWarningV2(
+        '@aws-cdk/app-staging-synthesizer-alpha:accountRegionalStagingBucket',
+        `The staging bucket will be created in the S3 account-regional namespace and named '${this.stagingBucketNamePrefix}-<account>-<region>-an'. `
+        + 'If this app was previously deployed with a globally-namespaced staging bucket, the bucket will be REPLACED: '
+        + 'the old bucket and all assets in it are deleted (when autoDeleteStagingAssets is enabled, the default), and '
+        + 'rollbacks to previously deployed versions of this app will fail until you redeploy. Set '
+        + '\'useAccountRegionalNamespace: false\' to keep the current bucket. This warning will be removed when this '
+        + 'module is stabilized.',
+      );
+    }
 
     const specializer = new StringSpecializer(this, props.qualifier);
     this.providedFileRole = props.fileAssetPublishingRole?._specialize(specializer);
@@ -376,8 +449,21 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
     });
   }
 
+  /**
+   * The staging bucket name without the account/region suffix.
+   */
+  private get stagingBucketNamePrefix(): string {
+    return `cdk-${this.appId}-staging`;
+  }
+
   private getCreateBucket() {
-    const stagingBucketName = this.stagingBucketName ?? `cdk-${this.appId}-staging-${this.account}-${this.region}`;
+    // This name is computed here rather than read off the Bucket construct because it goes into
+    // the asset manifest, and the CLI publishes assets before this stack is deployed. In the
+    // account-regional namespace CloudFormation appends `-<account>-<region>-an` to the prefix;
+    // we reproduce that suffix so the manifest and the deployed bucket agree.
+    const stagingBucketName = this.useAccountRegionalNamespace
+      ? `${this.stagingBucketNamePrefix}-${this.account}-${this.region}-an`
+      : this.stagingBucketName ?? `${this.stagingBucketNamePrefix}-${this.account}-${this.region}`;
     const bucketId = 'CdkStagingBucket';
     const createdBucket = this.node.tryFindChild(bucketId) as s3.Bucket;
     if (createdBucket) {
@@ -393,7 +479,14 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
 
     // Create the bucket once the dependencies have been created
     const bucket = new s3.Bucket(this, bucketId, {
-      bucketName: stagingBucketName,
+      // `bucketNamespace` is only passed on the account-regional path: passing GLOBAL explicitly
+      // would emit `BucketNamespace: "global"` into every existing user's template.
+      ...(this.useAccountRegionalNamespace ? {
+        bucketNamePrefix: this.stagingBucketNamePrefix,
+        bucketNamespace: s3.BucketNamespace.ACCOUNT_REGIONAL,
+      } : {
+        bucketName: stagingBucketName,
+      }),
       ...(this.autoDeleteStagingAssets ? {
         removalPolicy: RemovalPolicy.DESTROY,
         autoDeleteObjects: true,

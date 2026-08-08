@@ -118,6 +118,7 @@ Flags come in three types:
 | [@aws-cdk/core:defaultCrossStackReferences](#aws-cdkcoredefaultcrossstackreferences) | Controls whether cross-region stack references are strong, weak, or both | 2.254.0 | config |
 | [@aws-cdk/aws-eks:defaultToAL2023](#aws-cdkaws-eksdefaulttoal2023) | Use AL2023 as the default AMI type for EKS managed node groups using non-GPU instance types instead of the deprecated AL2 | 2.259.0 | new default |
 | [@aws-cdk/core:validateAgainstDefaultRules](#aws-cdkcorevalidateagainstdefaultrules) | Treat CloudFormation Validate findings as errors | 2.262.0 | config |
+| [@aws-cdk/app-staging-synthesizer-alpha:accountRegionalStagingBucket](#aws-cdkapp-staging-synthesizer-alphaaccountregionalstagingbucket) | Create the app-staging-synthesizer staging bucket in the S3 account-regional namespace | V2NEXT | new default |
 
 <!-- END table -->
 
@@ -130,6 +131,7 @@ The following json shows the current recommended set of flags, as `cdk init` wou
 {
   "context": {
     "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": true,
+    "@aws-cdk/app-staging-synthesizer-alpha:accountRegionalStagingBucket": true,
     "@aws-cdk/aws-apigateway:authorizerChangeDeploymentLogicalId": true,
     "@aws-cdk/aws-apigateway:disableCloudWatchRole": true,
     "@aws-cdk/aws-apigateway:requestValidatorUniqueId": true,
@@ -2551,6 +2553,37 @@ fail synthesis. When unconfigured, violations are reported as warnings only.
 | ----- | ----- | ----- |
 | (not in v1) |  |  |
 | 2.262.0 | `false` | `true` |
+
+
+### @aws-cdk/app-staging-synthesizer-alpha:accountRegionalStagingBucket
+
+*Create the app-staging-synthesizer staging bucket in the S3 account-regional namespace*
+
+Flag type: New default behavior
+
+When enabled, `DefaultStagingStack` creates its staging bucket in S3's account-regional
+namespace instead of the global namespace, unless `useAccountRegionalNamespace` says otherwise.
+
+Global bucket names are first-come, first-served across all of AWS, so another account can
+create a bucket with your app's well-known staging bucket name before you do ("bucket
+squatting") and break your deployments. Account-regional bucket names are scoped to your
+account and region and cannot be claimed by anyone else.
+
+The bucket is named `cdk-<appId>-staging-<account>-<region>-an` instead of
+`cdk-<appId>-staging-<account>-<region>`; CloudFormation appends the
+`-<account>-<region>-an` suffix to the prefix the CDK supplies.
+
+When disabled, the staging bucket keeps its globally-unique name.
+
+
+| Since | Unset behaves like | Recommended value |
+| ----- | ----- | ----- |
+| (not in v1) |  |  |
+| V2NEXT | `false` | `true` |
+
+**Compatibility with old behavior:** Explicitly set `useAccountRegionalNamespace: false` in your `AppStagingSynthesizer.defaultResources()` (or `DefaultStagingStack.factory()`) options.
+
+**Warning**: Enabling this flag on an existing app renames the staging bucket, which causes CloudFormation to replace it. With `autoDeleteStagingAssets` enabled (the default), the old bucket and every asset in it is deleted, so rollbacks to previously deployed versions of your app will fail until you redeploy. Apps that set `stagingBucketName` will fail synthesis, because an explicit name cannot be combined with the account-regional namespace. To migrate safely, first pin existing apps to `useAccountRegionalNamespace: false` explicitly, then enable the flag.
 
 
 <!-- END details -->

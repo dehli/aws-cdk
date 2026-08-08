@@ -54,4 +54,53 @@ describe('default staging stack', () => {
       ].join('\n'));
     });
   });
+
+  describe('account-regional namespace', () => {
+    test('fails when combined with stagingBucketName', () => {
+      const app = new App();
+      expect(() => new DefaultStagingStack(app, 'stack', {
+        appId: 'appid',
+        qualifier: 'qualifier',
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
+        stagingBucketName: 'my-staging-bucket',
+        useAccountRegionalNamespace: true,
+      })).toThrow(/'stagingBucketName' \(value: "my-staging-bucket"\) cannot be combined with 'useAccountRegionalNamespace'/);
+    });
+
+    test('fails when the resulting bucket name would exceed 63 characters', () => {
+      const app = new App();
+      expect(() => new DefaultStagingStack(app, 'stack', {
+        appId: 'a'.repeat(20),
+        qualifier: 'qualifier',
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
+        useAccountRegionalNamespace: true,
+        env: { account: '000000000000', region: 'us-isof-south-1' },
+      })).toThrow(/would be 64 characters, but S3 bucket names may be at most 63; shorten 'appId' by 1 character\(s\)/);
+    });
+
+    // 'cdk-' + 20 + '-staging' = 32, plus '-<account(12)>-<region>-an' = 17 + region.length.
+    test.each([
+      ['us-east-1', 58],
+      ['ap-southeast-7', 63], // longest ordinary region: exactly at the limit
+    ])('succeeds for a maximum-length appId in %s (%d characters)', (region: string) => {
+      const app = new App();
+      expect(() => new DefaultStagingStack(app, 'stack', {
+        appId: 'a'.repeat(20),
+        qualifier: 'qualifier',
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
+        useAccountRegionalNamespace: true,
+        env: { account: '000000000000', region },
+      })).not.toThrow();
+    });
+
+    test('does not validate length for environment-agnostic stacks', () => {
+      const app = new App();
+      expect(() => new DefaultStagingStack(app, 'stack', {
+        appId: 'a'.repeat(20),
+        qualifier: 'qualifier',
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
+        useAccountRegionalNamespace: true,
+      })).not.toThrow();
+    });
+  });
 });

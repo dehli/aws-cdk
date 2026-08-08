@@ -311,6 +311,50 @@ If you have an existing staging bucket encrypted with a KMS key, you will likely
 You can learn more about choosing a bucket encryption type in the
 [S3 documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/serv-side-encryption.html).
 
+### Staging Bucket Namespace
+
+By default the staging bucket is created in S3's *global* namespace and named
+`cdk-<appId>-staging-<account>-<region>`. Global bucket names are first-come, first-served across
+all of AWS, so another account can create a bucket with your app's staging bucket name before you do
+("bucket squatting") and break your deployments.
+
+Set `useAccountRegionalNamespace` to create the bucket in S3's
+[account-regional namespace](https://docs.aws.amazon.com/AmazonS3/latest/userguide/gpbucketnamespaces.html)
+instead, where the name is scoped to your account and region and cannot be claimed by anyone else:
+
+```ts
+import { BucketEncryption } from 'aws-cdk-lib/aws-s3';
+
+const app = new App({
+  defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
+    appId: 'my-app-id',
+    stagingBucketEncryption: BucketEncryption.S3_MANAGED,
+    useAccountRegionalNamespace: true,
+  }),
+});
+```
+
+The bucket is then named `cdk-<appId>-staging-<account>-<region>-an`; CloudFormation appends the
+`-<account>-<region>-an` suffix.
+
+You can also opt in for all apps by setting the
+`@aws-cdk/app-staging-synthesizer-alpha:accountRegionalStagingBucket` feature flag in `cdk.json`.
+The `useAccountRegionalNamespace` property always takes precedence over the flag. When this module
+is stabilized, the account-regional namespace will become the default.
+
+> **Migrating an existing app.** Switching namespaces renames the staging bucket, so CloudFormation
+> replaces it. With `autoDeleteStagingAssets` enabled (the default), the old bucket and every asset
+> in it is deleted, and rollbacks to previously deployed versions of your app will fail until you
+> redeploy. Consider setting `autoDeleteStagingAssets: false` for the switchover deployment so the
+> old bucket is retained.
+
+`stagingBucketName` cannot be combined with `useAccountRegionalNamespace` — in the account-regional
+namespace the name is always derived from `appId`. If you need a different name, keep the global
+namespace, or implement `IStagingResources` yourself (see
+[Using a Custom Staging Stack per Environment](#using-a-custom-staging-stack-per-environment)). Note
+that `DefaultStagingStack`'s bucket naming is private, so subclassing it will not let you override
+the name.
+
 ## Using a Custom Staging Stack per Environment
 
 If you want to customize some behavior that is not configurable via properties,
@@ -403,3 +447,5 @@ Since this module is experimental, there are some known limitations:
 - Due to limitations on the CloudFormation template size, CDK Applications can have
   at most 20 independent ECR images. Please upvote [this issue](https://github.com/aws/aws-cdk/issues/26119)
   if you need more than this.
+- `stagingBucketName` cannot be combined with `useAccountRegionalNamespace`. In the account-regional
+  namespace the staging bucket name is always derived from `appId`.
